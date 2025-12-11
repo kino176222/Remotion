@@ -2,19 +2,81 @@ import { z } from 'zod';
 import { interpolate, spring, useCurrentFrame, useVideoConfig, Sequence, AbsoluteFill } from 'remotion';
 import React from 'react';
 
+// 強調アニメーション（オーバーシュート＆スタッガー）コンポーネント
+const StaggeredEmphasisText: React.FC<{
+  text: string;
+  fontSize: number;
+  color: string;
+  fontFamily?: string;
+  delayOffset: number;
+}> = ({ text, fontSize, color, fontFamily, delayOffset }) => {
+  const frame = useCurrentFrame();
+  const chars = text.split('');
+
+  return (
+    <div style={{ fontSize, color, fontFamily, display: 'inline-block', whiteSpace: 'nowrap' }}>
+      {chars.map((char, i) => {
+        // スタッガー（一文字ずつ遅らせる）
+        const charDelay = delayOffset + i * 2; // 2フレームずつ遅延
+        const time = Math.max(0, frame - charDelay);
+
+        // スケールアニメーション (110% -> 95% -> 100%)
+        // 0-5f: 0 -> 1.1
+        // 5-8f: 1.1 (Wait)
+        // 8-12f: 1.1 -> 0.95
+        // 12-15f: 0.95 -> 1.0
+        const scale = interpolate(
+          time,
+          [0, 5, 8, 12, 15],
+          [0, 1.1, 1.1, 0.95, 1],
+          { extrapolateRight: 'clamp' }
+        );
+
+        // スライドイン (右から左へ)
+        // 0-5f: 100px -> 0px
+        const translateX = interpolate(
+          time,
+          [0, 8],
+          [100, 0],
+          { extrapolateRight: 'clamp', easing: (t) => t * (2 - t) } // Ease out
+        );
+
+        // 透明度
+        const opacity = interpolate(time, [0, 5], [0, 1], { extrapolateRight: 'clamp' });
+
+        return (
+          <span
+            key={i}
+            style={{
+              display: 'inline-block',
+              transform: `scale(${scale}) translateX(${translateX}px)`,
+              opacity,
+              marginRight: char === ' ' ? '0.2em' : '0', // スペースの幅調整
+              transformOrigin: '50% 80%', // 下部中心を基準にすると「跳ねる」感じが出やすい
+            }}
+          >
+            {char}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
 // アニメーション付きの1行テキストコンポーネント
 const AnimatedTextLine: React.FC<{
   text: string;
   fontSize: number;
   delayOffset: number;
   color: string;
-}> = ({ text, fontSize, delayOffset, color }) => {
+  fontFamily?: string;
+}> = ({ text, fontSize, delayOffset, color, fontFamily }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const chars = text.split('');
 
   return (
-    <div style={{ fontSize, color, display: 'inline-block', whiteSpace: 'nowrap' }}>
+    <div style={{ fontSize, color, fontFamily, display: 'inline-block', whiteSpace: 'nowrap' }}>
       {chars.map((char, i) => {
         const delay = delayOffset + i * 3; // 文字ごとの遅延
 
@@ -46,38 +108,72 @@ const AnimatedTextLine: React.FC<{
   );
 };
 
-// 虹色に波打つテキストコンポーネント
-const RainbowWavyText: React.FC<{
+// スライス・シャッターエフェクト（上下分割＆ズレ）
+const SlicedText: React.FC<{
   text: string;
   fontSize: number;
-}> = ({ text, fontSize }) => {
+  fontFamily?: string;
+}> = ({ text, fontSize, fontFamily }) => {
   const frame = useCurrentFrame();
-  const chars = text.split('');
+
+  // 激しいスライスアニメーション
+  // sin波で左右に行ったり来たりさせる
+  const shift = Math.sin(frame / 2) * 10; // 揺れ幅
+
+  // 色収差（RGB Split）用のオフセット
+  const rgbOffset = Math.sin(frame / 3) * 3;
+
+  const baseStyle: React.CSSProperties = {
+    fontSize,
+    fontFamily,
+    fontWeight: '900',
+    whiteSpace: 'nowrap',
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+  };
 
   return (
-    <div style={{ fontSize, display: 'inline-block', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
-      {chars.map((char, i) => {
-        // 波の動き: sin波 (フレーム数と文字のインデックスでずらす)
-        const y = Math.sin(frame / 10 + i * 0.5) * 20;
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {/* 上半分 */}
+      <div
+        style={{
+          ...baseStyle,
+          clipPath: 'polygon(0 0, 100% 0, 100% 50%, 0 50%)',
+          transform: `translate(calc(-50% + ${shift}px), -50%)`, // 右へズレる
+          color: 'cyan', // 上はシアン寄り
+          mixBlendMode: 'screen',
+        }}
+      >
+        {text}
+      </div>
 
-        // 虹色: HSL (フレーム数とインデックスで色相を回転)
-        const hue = (frame * 5 + i * 10) % 360;
-        const color = `hsl(${hue}, 100%, 50%)`;
+      {/* 下半分 */}
+      <div
+        style={{
+          ...baseStyle,
+          clipPath: 'polygon(0 50%, 100% 50%, 100% 100%, 0 100%)',
+          transform: `translate(calc(-50% - ${shift}px), -50%)`, // 左へズレる
+          color: 'magenta', // 下はマゼンタ寄り
+          mixBlendMode: 'screen',
+        }}
+      >
+        {text}
+      </div>
 
-        return (
-          <span
-            key={i}
-            style={{
-              display: 'inline-block',
-              transform: `translateY(${y}px)`,
-              color,
-              margin: '0 2px',
-            }}
-          >
-            {char}
-          </span>
-        );
-      })}
+      {/* 真ん中の白芯（可読性確保＆チラつき） */}
+      <div
+        style={{
+          ...baseStyle,
+          color: 'white',
+          opacity: 0.8,
+          transform: `translate(calc(-50% + ${rgbOffset}px), calc(-50% - ${rgbOffset}px))`,
+          mixBlendMode: 'overlay'
+        }}
+      >
+        {text}
+      </div>
     </div>
   );
 };
@@ -87,7 +183,8 @@ const TypewriterText: React.FC<{
   text: string;
   fontSize: number;
   color: string;
-}> = ({ text, fontSize, color }) => {
+  fontFamily?: string;
+}> = ({ text, fontSize, color, fontFamily }) => {
   const frame = useCurrentFrame();
   const textToShow = text.slice(0, Math.floor(frame / 5)); // 5フレームごとに1文字追加
   const cursorVisible = Math.floor(frame / 15) % 2 === 0; // カーソル点滅
@@ -98,7 +195,7 @@ const TypewriterText: React.FC<{
       style={{
         fontSize,
         color,
-        fontFamily: 'Courier New, monospace',
+        fontFamily: fontFamily ?? 'Courier New, monospace',
         display: 'flex',
         alignItems: 'center',
         fontWeight: 'bold',
@@ -127,11 +224,15 @@ export const myCompSchema = z.object({
     subtitle: z.string().describe('サブタイトル'),
     subtitleSize: z.number().describe('サブタイトルのサイズ'),
     secondSceneText: z.string().describe('2シーン目のテキスト'),
-    thirdSceneText: z.string().describe('3シーン目のテキスト'), // 新しい項目の追加
+    secondSceneSize: z.number().describe('2シーン目のサイズ'),
+    thirdSceneText: z.string().describe('3シーン目のテキスト'),
+    thirdSceneSize: z.number().describe('3シーン目のサイズ'),
+    thirdSceneColor: z.string().describe('3シーン目の色'),
+    fontFamily: z.string().describe('フォント名 (例: RoG2SanserifStd-Bd)'),
   }).describe('テキスト設定'),
   colorSettings: z.object({
     backgroundColor: z.string().describe('背景色'),
-    textColor: z.string().describe('文字色'),
+    textColor: z.string().describe('全体文字色'),
   }).describe('カラー設定'),
 });
 
@@ -146,46 +247,42 @@ export const MyComposition: React.FC<z.infer<typeof myCompSchema>> = ({
   const titleSize = textSettings?.titleSize ?? 100;
   const subtitle = textSettings?.subtitle ?? 'with Remotion';
   const subtitleSize = textSettings?.subtitleSize ?? 50;
-  // デフォルト値を設定
-  const secondSceneText = textSettings?.secondSceneText ?? 'これはテストです これはテストです';
-  const thirdSceneText = textSettings?.thirdSceneText ?? '3行目テストです';
 
-  const backgroundColor = colorSettings?.backgroundColor ?? '#ffffff';
-  const textColor = colorSettings?.textColor ?? '#000000';
+  const secondSceneText = textSettings?.secondSceneText ?? 'これはテストです これはテストです';
+  const secondSceneSize = textSettings?.secondSceneSize ?? 80;
+
+  const thirdSceneText = textSettings?.thirdSceneText ?? '3行目テストです';
+  const thirdSceneSize = textSettings?.thirdSceneSize ?? 80;
+
+  const backgroundColor = colorSettings?.backgroundColor ?? '#0a0a0a';
+  // 全体のデフォルト色
+  const globalTextColor = colorSettings?.textColor ?? '#ffffff';
+  // 3シーン目は個別指定があればそれを使い、なければ全体色を使う
+  const thirdSceneColor = textSettings?.thirdSceneColor ?? globalTextColor;
+
+  // フォント設定
+  const fontFamily = textSettings?.fontFamily ?? 'sans-serif';
 
   return (
     <AbsoluteFill style={{ backgroundColor }}>
       {/* Scene 1: 0 - 120 (4s) */}
       <Sequence durationInFrames={120}>
         <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', gap: 20 }}>
-          {/* タイトル: 左上からスライドイン */}
-          {(() => {
-            const slideProgress = spring({
-              frame,
-              fps,
-              config: { damping: 15 },
-            });
-            // 左上(-1000, -600) から 中央(0, 0) へ移動
-            const x = interpolate(slideProgress, [0, 1], [-1000, 0]);
-            const y = interpolate(slideProgress, [0, 1], [-600, 0]);
-
-            return (
-              <div style={{ transform: `translate(${x}px, ${y}px)` }}>
-                <AnimatedTextLine
-                  text={title}
-                  fontSize={titleSize}
-                  color={textColor}
-                  delayOffset={0}
-                />
-              </div>
-            );
-          })()}
+          {/* タイトル: ガイド指定の強調アニメーション (Slide -> Overshoot) */}
+          <StaggeredEmphasisText
+            text={title}
+            fontSize={titleSize}
+            color={globalTextColor}
+            fontFamily={fontFamily}
+            delayOffset={10} // 少し待ってから開始
+          />
 
           <AnimatedTextLine
             text={subtitle}
             fontSize={subtitleSize}
-            color={textColor}
-            delayOffset={15}
+            color={globalTextColor}
+            fontFamily={fontFamily}
+            delayOffset={45} // タイトルが終わったころに開始
           />
         </AbsoluteFill>
       </Sequence>
@@ -193,9 +290,10 @@ export const MyComposition: React.FC<z.infer<typeof myCompSchema>> = ({
       {/* Scene 2: 120 - 270 (5s) */}
       <Sequence from={120} durationInFrames={150}>
         <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
-          <RainbowWavyText
+          <SlicedText
             text={secondSceneText}
-            fontSize={80}
+            fontSize={secondSceneSize}
+            fontFamily={fontFamily}
           />
         </AbsoluteFill>
       </Sequence>
@@ -205,8 +303,9 @@ export const MyComposition: React.FC<z.infer<typeof myCompSchema>> = ({
         <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
           <TypewriterText
             text={thirdSceneText}
-            fontSize={80}
-            color={textColor}
+            fontSize={thirdSceneSize}
+            color={thirdSceneColor}
+            fontFamily={fontFamily}
           />
         </AbsoluteFill>
       </Sequence>
