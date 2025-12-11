@@ -11,6 +11,7 @@ export const lyricVideoSchema = z.object({
     backgroundColor: z.string().describe('Base background color'),
     textColor: z.string().describe('Main text color (Primary)'),
     baseFontSize: z.number().describe('Base font size (px)'),
+    transparent: z.boolean().optional().describe('Make background transparent'),
 });
 
 import { GlitchWrapper } from '../components/GlitchWrapper';
@@ -24,6 +25,7 @@ export const LyricVideo: React.FC<z.infer<typeof lyricVideoSchema>> = ({
     backgroundColor = '#0a0a0a',
     textColor = '#00f3ff',
     baseFontSize = 80,
+    transparent = false,
 }) => {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
@@ -110,7 +112,7 @@ export const LyricVideo: React.FC<z.infer<typeof lyricVideoSchema>> = ({
     return (
         <AbsoluteFill
             style={{
-                backgroundColor: backgroundColor,
+                backgroundColor: transparent ? 'transparent' : backgroundColor,
                 justifyContent: 'center',
                 alignItems: 'center',
                 fontFamily,
@@ -124,10 +126,12 @@ export const LyricVideo: React.FC<z.infer<typeof lyricVideoSchema>> = ({
             />
             {audioSrc && <Audio src={audioSrc} />}
 
-            <AbsoluteFill style={{
-                background: 'radial-gradient(circle at center, #1a1a2e 0%, #000000 100%)',
-                zIndex: 0
-            }} />
+            {!transparent && (
+                <AbsoluteFill style={{
+                    background: 'radial-gradient(circle at center, #1a1a2e 0%, #000000 100%)',
+                    zIndex: 0
+                }} />
+            )}
 
             {/* Render active line and maybe the previous one for fade out effect */}
             {lines.map((line, index) => {
