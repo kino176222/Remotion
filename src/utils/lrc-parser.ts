@@ -45,13 +45,12 @@ export const parseLrc = (lrcContent: string): LrcLine[] => {
                 });
             }
 
-            if (text) {
-                result.push({
-                    lineTime: totalSeconds,
-                    text,
-                    style,
-                });
-            }
+            // Push result even if text is empty (for timing/clearing or style-only lines)
+            result.push({
+                lineTime: totalSeconds,
+                text,
+                style,
+            });
         }
     }
 
